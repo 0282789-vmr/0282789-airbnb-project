@@ -1,12 +1,15 @@
 FROM python:3.12-slim
 
 WORKDIR /app
-COPY requirements.txt .
+
+# Dependencias
+COPY training/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY main.py .
+# Código
+COPY training/train.py /app/train.py
 
-ENV PORT=8080
-EXPOSE 8080
+# (Opcional) si tienes módulos compartidos, copia también utils/
+# COPY utils /app/utils
 
-CMD ["uvicorn", "main:app", "--host=0.0.0.0", "--port=8080"]
+CMD ["python", "train.py"]
