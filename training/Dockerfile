@@ -2,14 +2,14 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Dependencias
-COPY training/requirements.txt /app/requirements.txt
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Código
-COPY training/train.py /app/train.py
+COPY train.py .
 
-# (Opcional) si tienes módulos compartidos, copia también utils/
-# COPY utils /app/utils
+# Variables que usará train.py
+ENV BUCKET_NAME=0282789_bucket
+ENV CONFIG_GCS_PATH=airbnb-project/artifacts/config.json
 
 CMD ["python", "train.py"]
+
