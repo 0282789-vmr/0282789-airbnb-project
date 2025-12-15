@@ -102,9 +102,7 @@ def pick_comparables(df_map: pd.DataFrame, pred_price: float, k: int = 5) -> pd.
 
     out = pd.concat([below, above], ignore_index=True)
     return out
-
 def build_map(plot_df: pd.DataFrame, center_lat: float, center_lon: float):
-    # ✅ FIX: asegurar tipos numéricos y sin NaN ANTES de graficar
     plot_df = plot_df.copy()
     plot_df["latitude"] = pd.to_numeric(plot_df["latitude"], errors="coerce")
     plot_df["longitude"] = pd.to_numeric(plot_df["longitude"], errors="coerce")
@@ -115,20 +113,29 @@ def build_map(plot_df: pd.DataFrame, center_lat: float, center_lon: float):
         st.warning("No hay puntos válidos para dibujar (lat/lon/price).")
         return
 
-    # ✅ FIX: color simple para distinguir tu predicción
-    # pydeck espera [R,G,B]
-    plot_df["color"] = np.where(
-        plot_df.get("label", "").astype(str).str.contains("TU PREDICCIÓN", na=False),
-        "[0, 200, 0]",     # verde
-        "[200, 0, 0]"      # rojo
-    )
+    # ✅ Colores:
+    # - TU PREDICCIÓN: verde
+    # - abajo: azul
+    # - arriba: amarillo
+    def _color(row):
+        label = str(row.get("label", ""))
+        side = str(row.get("side", ""))  # "below" | "above" | "pred"
+        if "TU PREDICCIÓN" in label or side == "pred":
+            return [0, 200, 0]
+        if side == "below":
+            return [0, 120, 255]     # azul
+        if side == "above":
+            return [255, 200, 0]     # amarillo
+        return [160, 160, 160]       # fallback
+
+    plot_df["color"] = plot_df.apply(_color, axis=1)
 
     layer = pdk.Layer(
         "ScatterplotLayer",
         data=plot_df,
-        get_position=["longitude", "latitude"],  # ✅ FIX: [lon, lat]
-        get_radius=120,                          # metros aprox
-        radius_min_pixels=6,                     # ✅ FIX: para que SIEMPRE se vean
+        get_position=["longitude", "latitude"],
+        get_radius=120,
+        radius_min_pixels=6,
         pickable=True,
         auto_highlight=True,
         get_fill_color="color",
@@ -137,7 +144,7 @@ def build_map(plot_df: pd.DataFrame, center_lat: float, center_lon: float):
     view_state = pdk.ViewState(
         latitude=float(center_lat),
         longitude=float(center_lon),
-        zoom=12,   # ✅ FIX: un poco más cercano
+        zoom=12,
         pitch=0,
     )
 
@@ -152,7 +159,7 @@ def build_map(plot_df: pd.DataFrame, center_lat: float, center_lon: float):
         tooltip=tooltip,
         map_style="mapbox://styles/mapbox/dark-v10",
     )
-    st.pydeck_chart(deck, use_container_width=True)  # ✅ FIX
+    st.pydeck_chart(deck, use_container_width=True)
 
 # -----------------------------
 # UI
@@ -241,11 +248,6 @@ occ_annual = st.slider(
     step=1,
 )
 
-st.markdown("---")
-st.subheader("🗺️ Comparables en mapa")
-
-use_same_neigh = st.checkbox("Filtrar comparables a la misma alcaldía", value=True)
-use_same_room = st.checkbox("Filtrar comparables al mismo tipo de alojamiento", value=True)
 
 payload = {
     "neighbourhood_cleansed": neigh,
@@ -283,33 +285,34 @@ if st.button("🚀 Predecir", type="primary"):
             st.json(out)
 
         st.markdown("---")
-        st.subheader("🗺️ Mapa: 5 precios inmediatos arriba y 5 abajo")
+        st.subheader("🗺️ Precios inmediatos arriba del precio estimado (amarillo) y abajo (azul)")
 
         try:
             df_map = load_listings_for_map()
 
-            if use_same_neigh and "neighbourhood_cleansed" in df_map.columns:
-                df_map = df_map[df_map["neighbourhood_cleansed"].astype(str) == str(neigh)].copy()
+            pred = float(out["pred_price_mxn"])
+            comps = pick_comparables(df_map, pred, k=5).copy()
 
-            if use_same_room and "room_type" in df_map.columns:
-                df_map = df_map[df_map["room_type"].astype(str) == str(room_type)].copy()
-
-            comps = pick_comparables(df_map, float(out["pred_price_mxn"]), k=5)
-
+            # ✅ define si está arriba o abajo
+            comps["side"] = np.where(comps["price_mxn"] < pred, "below", "above")
+            comps["label"] = comps.apply(
+            lambda r: f"{'Abajo' if r['side']=='below' else 'Arriba'} (${r['price_mxn']:,.0f})",
+            axis=1
+            )
+            
             user_point = pd.DataFrame([{
                 "latitude": float(payload["latitude"]),
                 "longitude": float(payload["longitude"]),
-                "price_mxn": float(out["pred_price_mxn"]),
-                "label": "TU PREDICCIÓN"
+                "price_mxn": pred,
+                "label": "TU PREDICCIÓN",
+                "side": "pred"
             }])
 
-            comps = comps.copy()
-            comps["label"] = comps["price_mxn"].apply(lambda v: f"Comparable (${v:,.0f})")
-
             plot_df = pd.concat(
-                [user_point, comps[["latitude", "longitude", "price_mxn", "label"]]],
+                [user_point, comps[["latitude", "longitude", "price_mxn", "label", "side"]]],
                 ignore_index=True
             )
+
 
             build_map(
                 plot_df,
@@ -327,3 +330,4 @@ if st.button("🚀 Predecir", type="primary"):
     except Exception as e:
         st.error(f"Error llamando a la API: {e}")
         st.info("Tip: prueba primero abrir /docs de tu API y verificar que /predict responde.")
+
