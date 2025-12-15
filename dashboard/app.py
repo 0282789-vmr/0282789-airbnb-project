@@ -40,7 +40,7 @@ def load_neighbourhoods_and_purchase_table():
     if "neighbourhood_cleansed" not in df.columns:
         raise ValueError(f"CSV no tiene columna neighbourhood_cleansed. Columnas: {list(df.columns)}")
 
-    # Lista de neighbourhoods
+    # Lista de neighbourhoods (valores "raw" SIN acentos)
     neighbourhoods = sorted(df["neighbourhood_cleansed"].astype(str).unique().tolist())
     return cfg, df, neighbourhoods
 
@@ -75,9 +75,39 @@ room_types = [
     "Hotel room",
 ]
 
+# -----------------------------
+# Display map (UI con acentos) -> raw (sin acentos) para API/modelo
+# -----------------------------
+DISPLAY_MAP = {
+    "Alvaro Obregon": "Álvaro Obregón",
+    "Azcapotzalco": "Azcapotzalco",
+    "Benito Juarez": "Benito Juárez",
+    "Coyoacan": "Coyoacán",
+    "Cuajimalpa de Morelos": "Cuajimalpa de Morelos",
+    "Cuauhtemoc": "Cuauhtémoc",
+    "Gustavo A. Madero": "Gustavo A. Madero",
+    "Iztacalco": "Iztacalco",
+    "Iztapalapa": "Iztapalapa",
+    "La Magdalena Contreras": "La Magdalena Contreras",
+    "Miguel Hidalgo": "Miguel Hidalgo",
+    "Milpa Alta": "Milpa Alta",
+    "Tlalpan": "Tlalpan",
+    "Tlahuac": "Tláhuac",
+    "Venustiano Carranza": "Venustiano Carranza",
+    "Xochimilco": "Xochimilco",
+}
+
+# Armamos lista “bonita” para UI en el mismo orden que neighbourhoods
+display_names = [DISPLAY_MAP.get(n, n) for n in neighbourhoods]
+# Mapa inverso: display -> raw
+display_to_raw = {DISPLAY_MAP.get(n, n): n for n in neighbourhoods}
+
 st.subheader("📥 Ingresar Datos")
 
-neigh = st.selectbox("Alcaldía", neighbourhoods)
+# Selectbox muestra con acentos, pero guardamos el raw
+neigh_display = st.selectbox("Alcaldía", display_names)
+neigh = display_to_raw[neigh_display]  # ESTE es el que se manda a la API
+
 room_type = st.selectbox("Tipo de Alojamiento", room_types)
 
 col1, col2 = st.columns(2)
@@ -89,7 +119,6 @@ with col1:
     minimum_nights = st.number_input("Mínimo noches", min_value=1.0, max_value=30.0, value=2.0, step=1.0)
 
 with col2:
-
     # Metros cuadrados (se usa para calcular compra total)
     square_meters = st.number_input(
         "Metros cuadrados (m²)",
@@ -117,7 +146,7 @@ occ_annual = st.slider(
 )
 
 payload = {
-    "neighbourhood_cleansed": neigh,
+    "neighbourhood_cleansed": neigh,  # raw sin acentos
     "room_type": room_type,
     "accommodates": float(accommodates),
     "bathrooms": float(bathrooms),
@@ -154,5 +183,3 @@ if st.button("🚀 Predecir", type="primary"):
     except Exception as e:
         st.error(f"Error llamando a la API: {e}")
         st.info("Tip: prueba primero abrir /docs de tu API y verificar que /predict responde.")
-
-
