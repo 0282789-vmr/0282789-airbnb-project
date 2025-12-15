@@ -73,9 +73,12 @@ class PredictRequest(BaseModel):
     # Para el cálculo del negocio
     estimated_occupancy_1365d: Optional[float] = Field(
         None,
-        description=""Noches ocupadas en un AÑO (0–365). Si no se manda, se usa default del config.",
+        ge=0,
+        le=365,
+        description="Noches ocupadas en un AÑO (0–365). (Nombre histórico: *_1365d)",
         example=180
     )
+
 
 class PredictResponse(BaseModel):
     pred_price_mxn: float
@@ -270,4 +273,5 @@ def predict(req: PredictRequest):
         risk_level=risk_level,
         model_version=str(CFG["model"]["version"]),
     )
+
 
