@@ -88,6 +88,17 @@ with col1:
     beds = st.number_input("beds", min_value=0.0, max_value=20.0, value=2.0, step=1.0)
 with col2:
     minimum_nights = st.number_input("minimum_nights", min_value=1.0, max_value=30.0, value=2.0, step=1.0)
+
+    # Metros cuadrados (se usa para calcular compra total)
+    square_meters = st.number_input(
+        "Metros cuadrados (m²)",
+        min_value=1.0,
+        max_value=2000.0,
+        value=80.0,
+        step=1.0,
+        help="Se usa para calcular compra estimada = (precio por m² del CSV) × m²."
+    )
+
     latitude = st.number_input("latitude", value=19.35, format="%.6f")
     longitude = st.number_input("longitude", value=-99.16, format="%.6f")
     amenities_count = st.number_input("amenities_count", min_value=0, max_value=300, value=12, step=1)
@@ -115,7 +126,8 @@ payload = {
     "latitude": float(latitude),
     "longitude": float(longitude),
     "amenities_count": int(amenities_count),
-    "estimated_occupancy_1365d": float(occ_annual),  # ya lo interpretamos como 0–365 anual
+    "estimated_occupancy_1365d": float(occ_annual),
+    "square_meters": float(square_meters),
 }
 
 if st.button("🚀 Predecir", type="primary"):
