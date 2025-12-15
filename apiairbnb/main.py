@@ -79,6 +79,15 @@ class PredictRequest(BaseModel):
         example=180
     )
 
+    square_meters: Optional[float] = Field(
+        None,
+        ge=1,
+        le=2000,
+        description="Metros cuadrados del inmueble. Se usa para calcular precio de compra total = purchase_price_mxn (precio/m²) * m².",
+        example=80
+    )
+
+
 
 class PredictResponse(BaseModel):
     pred_price_mxn: float
@@ -254,8 +263,13 @@ def predict(req: PredictRequest):
     annual_income_mxn = pred_price_mxn * occ_1365d
 
 
-    # 5) purchase_price
-    purchase_price_mxn = get_purchase_price(req.neighbourhood_cleansed)
+    # 5) purchase_price_mxn en la tabla es PRECIO POR m²
+    price_m2 = get_purchase_price(req.neighbourhood_cleansed)
+
+    purchase_price_mxn = None
+    if price_m2 is not None and req.square_meters is not None:
+        purchase_price_mxn = float(price_m2) * float(req.square_meters)
+
 
     # 6) payback
     payback_years = None
@@ -273,5 +287,6 @@ def predict(req: PredictRequest):
         risk_level=risk_level,
         model_version=str(CFG["model"]["version"]),
     )
+
 
 
