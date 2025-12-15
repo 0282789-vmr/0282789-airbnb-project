@@ -44,16 +44,12 @@ def load_neighbourhoods_and_purchase_table():
     cfg = load_cfg()
     purchase_path = cfg["data"]["purchase_price_by_neighbourhood"]
 
-    # leer CSV directo de GCS
-    # (si te falla por falta de gcsfs, cámbialo a descarga local como listings)
     gcs_uri = f"gs://{BUCKET_NAME}/{purchase_path}"
     df = pd.read_csv(gcs_uri)
 
-    # Normaliza columnas esperadas
     if "neighbourhood_cleansed" not in df.columns:
         raise ValueError(f"CSV no tiene columna neighbourhood_cleansed. Columnas: {list(df.columns)}")
 
-    # Lista de neighbourhoods (valores "raw" SIN acentos)
     neighbourhoods = sorted(df["neighbourhood_cleansed"].astype(str).unique().tolist())
     return cfg, df, neighbourhoods
 
@@ -69,13 +65,11 @@ def post_predict(payload: dict):
 # -----------------------------
 @st.cache_data(ttl=600)
 def load_listings_for_map():
-    # Descarga local (evita gcsfs/fsspec)
     with tempfile.TemporaryDirectory() as tmp:
         local_csv = os.path.join(tmp, "listings.csv")
         gcs_download_to_file(BUCKET_NAME, LISTINGS_GCS_PATH, local_csv)
         df = pd.read_csv(local_csv, encoding="latin1", low_memory=False)
 
-    # Validar columnas mínimas
     needed_cols = {"price", "latitude", "longitude"}
     missing = [c for c in needed_cols if c not in df.columns]
     if missing:
@@ -84,15 +78,19 @@ def load_listings_for_map():
     # price -> num
     df["price_mxn"] = (
         df["price"].astype(str)
-        .str.replace(r"[^0-9.]", "", regex=True)  # quita $ y comas
+        .str.replace(r"[^0-9.]", "", regex=True)
     )
     df["price_mxn"] = pd.to_numeric(df["price_mxn"], errors="coerce")
 
+    # ✅ FIX: lat/lon numéricos + limpieza
     df["latitude"] = pd.to_numeric(df["latitude"], errors="coerce")
     df["longitude"] = pd.to_numeric(df["longitude"], errors="coerce")
-
     df = df.dropna(subset=["latitude", "longitude", "price_mxn"]).copy()
     df = df[np.isfinite(df["price_mxn"])].copy()
+
+    # ✅ FIX: filtra rangos razonables CDMX (evita puntos fuera por datos sucios)
+    df = df[(df["latitude"].between(18.5, 20.5)) & (df["longitude"].between(-100.5, -98.0))].copy()
+
     return df
 
 def pick_comparables(df_map: pd.DataFrame, pred_price: float, k: int = 5) -> pd.DataFrame:
@@ -106,18 +104,41 @@ def pick_comparables(df_map: pd.DataFrame, pred_price: float, k: int = 5) -> pd.
     return out
 
 def build_map(plot_df: pd.DataFrame, center_lat: float, center_lon: float):
+    # ✅ FIX: asegurar tipos numéricos y sin NaN ANTES de graficar
+    plot_df = plot_df.copy()
+    plot_df["latitude"] = pd.to_numeric(plot_df["latitude"], errors="coerce")
+    plot_df["longitude"] = pd.to_numeric(plot_df["longitude"], errors="coerce")
+    plot_df["price_mxn"] = pd.to_numeric(plot_df["price_mxn"], errors="coerce")
+    plot_df = plot_df.dropna(subset=["latitude", "longitude", "price_mxn"]).copy()
+
+    if plot_df.empty:
+        st.warning("No hay puntos válidos para dibujar (lat/lon/price).")
+        return
+
+    # ✅ FIX: color simple para distinguir tu predicción
+    # pydeck espera [R,G,B]
+    plot_df["color"] = np.where(
+        plot_df.get("label", "").astype(str).str.contains("TU PREDICCIÓN", na=False),
+        "[0, 200, 0]",     # verde
+        "[200, 0, 0]"      # rojo
+    )
+
     layer = pdk.Layer(
         "ScatterplotLayer",
         data=plot_df,
-        get_position=["longitude", "latitude"],
-        get_radius=140,
+        get_position=["longitude", "latitude"],  # ✅ FIX: [lon, lat]
+        get_radius=120,                          # metros aprox
+        radius_min_pixels=6,                     # ✅ FIX: para que SIEMPRE se vean
         pickable=True,
+        auto_highlight=True,
+        get_fill_color="color",
     )
 
     view_state = pdk.ViewState(
         latitude=float(center_lat),
         longitude=float(center_lon),
-        zoom=11,
+        zoom=12,   # ✅ FIX: un poco más cercano
+        pitch=0,
     )
 
     tooltip = {
@@ -125,8 +146,13 @@ def build_map(plot_df: pd.DataFrame, center_lat: float, center_lon: float):
         "style": {"backgroundColor": "white", "color": "black"},
     }
 
-    deck = pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip=tooltip)
-    st.pydeck_chart(deck)
+    deck = pdk.Deck(
+        layers=[layer],
+        initial_view_state=view_state,
+        tooltip=tooltip,
+        map_style="mapbox://styles/mapbox/dark-v10",
+    )
+    st.pydeck_chart(deck, use_container_width=True)  # ✅ FIX
 
 # -----------------------------
 # UI
@@ -153,9 +179,6 @@ room_types = [
     "Hotel room",
 ]
 
-# -----------------------------
-# Display map (UI con acentos) -> raw (sin acentos) para API/modelo
-# -----------------------------
 DISPLAY_MAP = {
     "Alvaro Obregon": "Álvaro Obregón",
     "Azcapotzalco": "Azcapotzalco",
@@ -181,7 +204,7 @@ display_to_raw = {DISPLAY_MAP.get(n, n): n for n in neighbourhoods}
 st.subheader("📥 Ingresar Datos")
 
 neigh_display = st.selectbox("Alcaldía", display_names)
-neigh = display_to_raw[neigh_display]  # raw para API
+neigh = display_to_raw[neigh_display]
 
 room_type = st.selectbox("Tipo de Alojamiento", room_types)
 
@@ -218,9 +241,6 @@ occ_annual = st.slider(
     step=1,
 )
 
-# -----------------------------
-# NUEVO: filtros para comparables (mínimo cambio)
-# -----------------------------
 st.markdown("---")
 st.subheader("🗺️ Comparables en mapa")
 
@@ -228,7 +248,7 @@ use_same_neigh = st.checkbox("Filtrar comparables a la misma alcaldía", value=T
 use_same_room = st.checkbox("Filtrar comparables al mismo tipo de alojamiento", value=True)
 
 payload = {
-    "neighbourhood_cleansed": neigh,  # raw sin acentos
+    "neighbourhood_cleansed": neigh,
     "room_type": room_type,
     "accommodates": float(accommodates),
     "bathrooms": float(bathrooms),
@@ -262,26 +282,20 @@ if st.button("🚀 Predecir", type="primary"):
         with st.expander("JSON completo"):
             st.json(out)
 
-        # -----------------------------
-        # NUEVO: mapa comparables +/-5
-        # -----------------------------
         st.markdown("---")
         st.subheader("🗺️ Mapa: 5 precios inmediatos arriba y 5 abajo")
 
         try:
             df_map = load_listings_for_map()
 
-            # Filtros opcionales (si existen columnas)
             if use_same_neigh and "neighbourhood_cleansed" in df_map.columns:
                 df_map = df_map[df_map["neighbourhood_cleansed"].astype(str) == str(neigh)].copy()
 
             if use_same_room and "room_type" in df_map.columns:
                 df_map = df_map[df_map["room_type"].astype(str) == str(room_type)].copy()
 
-            # Selección comparables
             comps = pick_comparables(df_map, float(out["pred_price_mxn"]), k=5)
 
-            # Punto de tu predicción
             user_point = pd.DataFrame([{
                 "latitude": float(payload["latitude"]),
                 "longitude": float(payload["longitude"]),
@@ -290,21 +304,22 @@ if st.button("🚀 Predecir", type="primary"):
             }])
 
             comps = comps.copy()
-            if "neighbourhood_cleansed" in comps.columns:
-                comps["label"] = comps["neighbourhood_cleansed"].astype(str)
-            else:
-                comps["label"] = "Comparable"
+            comps["label"] = comps["price_mxn"].apply(lambda v: f"Comparable (${v:,.0f})")
 
             plot_df = pd.concat(
                 [user_point, comps[["latitude", "longitude", "price_mxn", "label"]]],
                 ignore_index=True
             )
 
-            build_map(plot_df, center_lat=float(payload["latitude"]), center_lon=float(payload["longitude"]))
+            build_map(
+                plot_df,
+                center_lat=float(payload["latitude"]),
+                center_lon=float(payload["longitude"])
+            )
 
             with st.expander("Ver comparables (tabla)"):
                 show_cols = [c for c in ["neighbourhood_cleansed", "room_type", "latitude", "longitude", "price_mxn"] if c in comps.columns]
-                st.dataframe(comps[show_cols].sort_values("price_mxn"))
+                st.dataframe(comps[show_cols].sort_values("price_mxn"), use_container_width=True)
 
         except Exception as e:
             st.warning(f"No pude mostrar el mapa de comparables: {e}")
