@@ -15,7 +15,7 @@ API_URL = os.environ.get("API_URL", "https://airbnb-api-1069787915127.europe-wes
 BUCKET_NAME = os.environ.get("BUCKET_NAME", "0282789_bucket")
 CONFIG_GCS_PATH = os.environ.get("CONFIG_GCS_PATH", "airbnb-project/artifacts/config.json")
 
-# NUEVO: path del listings
+# Path del listings
 LISTINGS_GCS_PATH = os.environ.get("LISTINGS_GCS_PATH", "airbnb-project/data/listings.csv")
 
 st.set_page_config(page_title="Airbnb Investment Dashboard", layout="centered")
@@ -61,7 +61,7 @@ def post_predict(payload: dict):
     return r.json()
 
 # -----------------------------
-# NUEVO: cargar listings.csv para mapa
+# Cargar listings.csv para mapa
 # -----------------------------
 @st.cache_data(ttl=600)
 def load_listings_for_map():
@@ -82,13 +82,13 @@ def load_listings_for_map():
     )
     df["price_mxn"] = pd.to_numeric(df["price_mxn"], errors="coerce")
 
-    # ✅ FIX: lat/lon numéricos + limpieza
+    # lat/lon numéricos + limpieza
     df["latitude"] = pd.to_numeric(df["latitude"], errors="coerce")
     df["longitude"] = pd.to_numeric(df["longitude"], errors="coerce")
     df = df.dropna(subset=["latitude", "longitude", "price_mxn"]).copy()
     df = df[np.isfinite(df["price_mxn"])].copy()
 
-    # ✅ FIX: filtra rangos razonables CDMX (evita puntos fuera por datos sucios)
+    # filtra rangos razonables CDMX (evita puntos fuera por datos sucios)
     df = df[(df["latitude"].between(18.5, 20.5)) & (df["longitude"].between(-100.5, -98.0))].copy()
 
     return df
@@ -102,6 +102,7 @@ def pick_comparables(df_map: pd.DataFrame, pred_price: float, k: int = 5) -> pd.
 
     out = pd.concat([below, above], ignore_index=True)
     return out
+
 def build_map(plot_df: pd.DataFrame, center_lat: float, center_lon: float):
     plot_df = plot_df.copy()
     plot_df["latitude"] = pd.to_numeric(plot_df["latitude"], errors="coerce")
@@ -113,7 +114,10 @@ def build_map(plot_df: pd.DataFrame, center_lat: float, center_lon: float):
         st.warning("No hay puntos válidos para dibujar (lat/lon/price).")
         return
 
-    # ✅ Colores:
+    # ✅ Tooltip con 2 decimales
+    plot_df["price_label"] = plot_df["price_mxn"].apply(lambda x: f"{x:,.2f}")
+
+    # Colores:
     # - TU PREDICCIÓN: verde
     # - abajo: azul
     # - arriba: amarillo
@@ -148,8 +152,9 @@ def build_map(plot_df: pd.DataFrame, center_lat: float, center_lon: float):
         pitch=0,
     )
 
+    # ✅ Solo precio en tooltip (sin label)
     tooltip = {
-        "html": "<b>{label}</b><br/>Precio: <b>${price_mxn}</b> MXN",
+        "html": "<b>Precio:</b> <b>${price_label}</b> MXN",
         "style": {"backgroundColor": "white", "color": "black"},
     }
 
@@ -248,7 +253,6 @@ occ_annual = st.slider(
     step=1,
 )
 
-
 payload = {
     "neighbourhood_cleansed": neigh,
     "room_type": room_type,
@@ -274,10 +278,19 @@ if st.button("🚀 Predecir", type="primary"):
 
         colA, colB = st.columns(2)
         with colA:
-            st.metric("Ingreso anual (MXN)", f"{out['annual_income_mxn']:,.2f}" if out.get("annual_income_mxn") is not None else "—")
-            st.metric("Compra estimada (MXN)", f"{out['purchase_price_mxn']:,.2f}" if out.get("purchase_price_mxn") is not None else "—")
+            st.metric(
+                "Ingreso anual (MXN)",
+                f"{out['annual_income_mxn']:,.2f}" if out.get("annual_income_mxn") is not None else "—"
+            )
+            st.metric(
+                "Compra estimada (MXN)",
+                f"{out['purchase_price_mxn']:,.2f}" if out.get("purchase_price_mxn") is not None else "—"
+            )
         with colB:
-            st.metric("Retorno de Inversión (años)", f"{out['payback_years']:.2f}" if out.get("payback_years") is not None else "—")
+            st.metric(
+                "Retorno de Inversión (años)",
+                f"{out['payback_years']:.2f}" if out.get("payback_years") is not None else "—"
+            )
             st.metric("Riesgo", out.get("risk_level", "—"))
 
         st.caption(f"Model version: {out.get('model_version','—')}")
@@ -285,7 +298,7 @@ if st.button("🚀 Predecir", type="primary"):
             st.json(out)
 
         st.markdown("---")
-        st.subheader("🗺️ Precios inmediatos arriba del precio estimado (amarillo) y abajo (azul)")
+        st.subheader("🗺️ Precios inmediatos del precio estimado, arriba (amarillo) y abajo (azul)")
 
         try:
             df_map = load_listings_for_map()
@@ -293,13 +306,8 @@ if st.button("🚀 Predecir", type="primary"):
             pred = float(out["pred_price_mxn"])
             comps = pick_comparables(df_map, pred, k=5).copy()
 
-            # ✅ define si está arriba o abajo
             comps["side"] = np.where(comps["price_mxn"] < pred, "below", "above")
-            comps["label"] = comps.apply(
-            lambda r: f"{'Abajo' if r['side']=='below' else 'Arriba'} (${r['price_mxn']:,.0f})",
-            axis=1
-            )
-            
+
             user_point = pd.DataFrame([{
                 "latitude": float(payload["latitude"]),
                 "longitude": float(payload["longitude"]),
@@ -308,11 +316,13 @@ if st.button("🚀 Predecir", type="primary"):
                 "side": "pred"
             }])
 
+            # Nota: aunque label existe, ya NO se muestra en tooltip (solo precio)
+            comps["label"] = np.where(comps["side"] == "below", "Abajo", "Arriba")
+
             plot_df = pd.concat(
                 [user_point, comps[["latitude", "longitude", "price_mxn", "label", "side"]]],
                 ignore_index=True
             )
-
 
             build_map(
                 plot_df,
@@ -330,4 +340,3 @@ if st.button("🚀 Predecir", type="primary"):
     except Exception as e:
         st.error(f"Error llamando a la API: {e}")
         st.info("Tip: prueba primero abrir /docs de tu API y verificar que /predict responde.")
-
