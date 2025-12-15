@@ -55,7 +55,7 @@ def post_predict(payload: dict):
 # UI
 # -----------------------------
 st.title("🏠 Airbnb Investment Dashboard")
-st.caption("Consume tu API en Cloud Run y muestra predicción + métricas de negocio.")
+st.caption("API para predecir el costo estimado por noche para un AirBnb en CDMX")
 
 with st.expander("🔧 Configuración", expanded=False):
     st.write("API_URL:", API_URL)
@@ -75,18 +75,18 @@ room_types = [
     "Hotel room",
 ]
 
-st.subheader("📥 Inputs")
+st.subheader("📥 Ingresar Datos")
 
-neigh = st.selectbox("Neighbourhood (neighbourhood_cleansed)", neighbourhoods)
-room_type = st.selectbox("Room type", room_types)
+neigh = st.selectbox("Alcaldía", neighbourhoods)
+room_type = st.selectbox("Tipo de Alojamiento", room_types)
 
 col1, col2 = st.columns(2)
 with col1:
-    accommodates = st.number_input("accommodates", min_value=1, max_value=20, value=4, step=1)
-    bathrooms = st.number_input("bathrooms", min_value=0.0, max_value=10.0, value=1.0, step=0.5)
-    bedrooms = st.number_input("bedrooms", min_value=0.0, max_value=10.0, value=2.0, step=1.0)
-    beds = st.number_input("beds", min_value=0.0, max_value=20.0, value=2.0, step=1.0)
-    minimum_nights = st.number_input("minimum_nights", min_value=1.0, max_value=30.0, value=2.0, step=1.0)
+    accommodates = st.number_input("Huéspedes", min_value=1, max_value=20, value=4, step=1)
+    bathrooms = st.number_input("Baños", min_value=0.0, max_value=10.0, value=1.0, step=0.5)
+    bedrooms = st.number_input("Habitaciones", min_value=0.0, max_value=10.0, value=2.0, step=1.0)
+    beds = st.number_input("Camas", min_value=0.0, max_value=20.0, value=2.0, step=1.0)
+    minimum_nights = st.number_input("Mínimo noches", min_value=1.0, max_value=30.0, value=2.0, step=1.0)
 
 with col2:
 
@@ -100,16 +100,16 @@ with col2:
         help="Se usa para calcular compra estimada = (precio por m² del CSV) × m²."
     )
 
-    latitude = st.number_input("latitude", value=19.35, format="%.6f")
+    latitude = st.number_input("Latitude", value=19.35, format="%.6f")
     longitude = st.number_input("longitude", value=-99.16, format="%.6f")
-    amenities_count = st.number_input("amenities_count", min_value=0, max_value=300, value=12, step=1)
+    amenities_count = st.number_input("Amenidades", min_value=0, max_value=300, value=12, step=1)
 
 st.markdown("---")
-st.subheader("💼 Supuestos de ocupación (anual)")
+st.subheader("💼 Estimado de ocupación (anual)")
 
 default_occ = cfg.get("defaults", {}).get("estimated_occupancy_1365d", 180)
 occ_annual = st.slider(
-    "Noches ocupadas en un año (0–365)",
+    "Ocupación en un año (0–365)",
     min_value=0,
     max_value=365,
     value=int(default_occ) if default_occ is not None else 180,
@@ -144,7 +144,7 @@ if st.button("🚀 Predecir", type="primary"):
             st.metric("Ingreso anual (MXN)", f"{out['annual_income_mxn']:,.2f}" if out.get("annual_income_mxn") is not None else "—")
             st.metric("Compra estimada (MXN)", f"{out['purchase_price_mxn']:,.2f}" if out.get("purchase_price_mxn") is not None else "—")
         with colB:
-            st.metric("Payback (años)", f"{out['payback_years']:.2f}" if out.get("payback_years") is not None else "—")
+            st.metric("Retorno de Inversión (años)", f"{out['payback_years']:.2f}" if out.get("payback_years") is not None else "—")
             st.metric("Riesgo", out.get("risk_level", "—"))
 
         st.caption(f"Model version: {out.get('model_version','—')}")
@@ -154,4 +154,5 @@ if st.button("🚀 Predecir", type="primary"):
     except Exception as e:
         st.error(f"Error llamando a la API: {e}")
         st.info("Tip: prueba primero abrir /docs de tu API y verificar que /predict responde.")
+
 
