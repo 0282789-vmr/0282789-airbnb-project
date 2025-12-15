@@ -130,7 +130,7 @@ with col2:
     )
 
     latitude = st.number_input("Latitude", value=19.35, format="%.6f")
-    longitude = st.number_input("longitude", value=-99.16, format="%.6f")
+    longitude = st.number_input("Longitude", value=-99.16, format="%.6f")
     amenities_count = st.number_input("Amenidades", min_value=0, max_value=300, value=12, step=1)
 
 st.markdown("---")
@@ -183,3 +183,4 @@ if st.button("🚀 Predecir", type="primary"):
     except Exception as e:
         st.error(f"Error llamando a la API: {e}")
         st.info("Tip: prueba primero abrir /docs de tu API y verificar que /predict responde.")
+
