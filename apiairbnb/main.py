@@ -73,7 +73,7 @@ class PredictRequest(BaseModel):
     # Para el cálculo del negocio
     estimated_occupancy_1365d: Optional[float] = Field(
         None,
-        description="Noches ocupadas en los últimos 1365 días (≈ 3.7 años). Si no se manda, se usa default del config.",
+        description=""Noches ocupadas en un AÑO (0–365). Si no se manda, se usa default del config.",
         example=180
     )
 
@@ -247,13 +247,9 @@ def predict(req: PredictRequest):
     default_occ = CFG.get("defaults", {}).get("estimated_occupancy_1365d", 180)
     occ_1365d = req.estimated_occupancy_1365d if req.estimated_occupancy_1365d is not None else default_occ
 
-    # 4) ingreso anual (según tu enfoque: usar ocupación_1365d/365 o directo?)
-    # Tú elegiste: annual_income_mxn = pred_price_mxn * estimated_occupancy_1365d
-    # OJO: eso te da ingreso en 1365 días si ocupación es noches en 1365d.
-    # Para ANUAL, lo correcto sería: (occ_1365d/1365)*365 * pred_price_mxn
-    # Pero como tú lo planteaste en config: pred_price_mxn * estimated_occupancy_1365d,
-    # lo dejamos exacto a tu regla.
-    annual_income_mxn = float(pred_price_mxn * float(occ_1365d))
+    # 4) estimated_occupancy_1365d = noches ocupadas en un año (0–365)
+    annual_income_mxn = pred_price_mxn * occ_1365d
+
 
     # 5) purchase_price
     purchase_price_mxn = get_purchase_price(req.neighbourhood_cleansed)
@@ -274,3 +270,4 @@ def predict(req: PredictRequest):
         risk_level=risk_level,
         model_version=str(CFG["model"]["version"]),
     )
+
