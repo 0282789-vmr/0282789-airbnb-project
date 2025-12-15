@@ -86,8 +86,9 @@ with col1:
     bathrooms = st.number_input("bathrooms", min_value=0.0, max_value=10.0, value=1.0, step=0.5)
     bedrooms = st.number_input("bedrooms", min_value=0.0, max_value=10.0, value=2.0, step=1.0)
     beds = st.number_input("beds", min_value=0.0, max_value=20.0, value=2.0, step=1.0)
-with col2:
     minimum_nights = st.number_input("minimum_nights", min_value=1.0, max_value=30.0, value=2.0, step=1.0)
+
+with col2:
 
     # Metros cuadrados (se usa para calcular compra total)
     square_meters = st.number_input(
@@ -153,3 +154,4 @@ if st.button("🚀 Predecir", type="primary"):
     except Exception as e:
         st.error(f"Error llamando a la API: {e}")
         st.info("Tip: prueba primero abrir /docs de tu API y verificar que /predict responde.")
+
